@@ -1,0 +1,54 @@
+
+// Load the Shapefile for zones
+var hyderabad_zones = ee.FeatureCollection("projects/ee-arjunkrishna/assets/ghmc-zones");
+
+// Load the MERRA-2 dataset
+var merra_dataset = ee.ImageCollection('NASA/GSFC/MERRA/slv/2');
+
+// Define the date range
+var startDate = '2017-01-01';
+var endDate = '2023-01-01';
+
+// Filter the MERRA-2 dataset for the specified date range
+var filtered_dataset = merra_dataset.filterDate(startDate, endDate);
+
+// Define a function to calculate the daily mean for each zone
+var calculateMean = function(image) {
+  // Get the date of the image
+  var date = ee.Date(image.get('system:time_start')).format('yyyy-MM-dd');
+  
+  // Reduce the image to get the mean of U10M, V10M, QV10M, and T2M for each zone
+  var stats = hyderabad_zones.map(function(zone) {
+    var region_mean = image.reduceRegion({
+      reducer: ee.Reducer.mean(),
+      geometry: zone.geometry(),
+      scale: 11132,  // Resolution of the dataset
+      bestEffort: true
+    });
+    
+    
+    
+    return ee.Feature(null, {
+      'system:time_start': date,
+      'zone_name': zone.get('name'),
+      'U10M_mean': region_mean.get('U10M'),
+      'V10M_mean': region_mean.get('V10M'),
+      'QV10M_mean': region_mean.get('QV10M'),
+      'T2M_mean': region_mean.get('T2M')
+    });
+  });
+  
+  return stats;
+};
+
+// Map over the filtered dataset to calculate daily mean for each zone
+var dailyMean = filtered_dataset.map(calculateMean).flatten();
+
+// Export the results as a CSV file
+Export.table.toDrive({
+  collection: dailyMean,
+  description: 'merra2_mean_calculated_zones',
+  folder: 'GEE_exports',
+  fileFormat: 'CSV'
+});
+
